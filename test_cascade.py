@@ -59,27 +59,37 @@ def test_per_slice_factor_from_prediction():
 def test_registered_prediction_fold_gain_tracks_growth():
     # written before running: identity ~ optimal on benign spectra,
     # real gain where growth is nonuniform along the panel
+    # re-registered 2026-09-03: the old single numbers (1.03/1.09/1.72)
+    # were one draw each of a seed-sensitive experiment (wilkinson spans
+    # roughly 1.4-3.7 at draws=8). the claim is now the median over three
+    # jitter seeds at draws=20, and the asserts are bands, so a gross
+    # shift trips a test instead of hiding in the prints
     cases = {
         "geometric k=1e4": gen_geometric(256, 1e4, seed=5),
         "nonneg random": nonneg(256),
         "wilkinson": wilkinson(256),
     }
-    d = 3
-    gains, spreads = {}, {}
+    d, seeds = 3, (0, 1, 2)
+    med = {}
     for name, A in cases.items():
         L21, U12 = panel_step(A, 32)
-        e_id = np.sqrt(measured_sq_error(L21, U12, d, draws=8))
         Lf, Uf = apply_contraction(L21, U12, range_rule)
-        e_fold = np.sqrt(measured_sq_error(Lf, Uf, d, draws=8))
+        g = []
+        for sd in seeds:
+            e_id = np.sqrt(measured_sq_error(L21, U12, d, draws=20, seed=sd))
+            e_fold = np.sqrt(measured_sq_error(Lf, Uf, d, draws=20, seed=sd))
+            g.append(e_id / e_fold)
         h = range_rule(L21, U12)
-        gains[name] = e_id / e_fold
-        spreads[name] = np.max(h) / np.min(h)
-        print(f"{name:16s} profile spread {spreads[name]:9.2e}  fold gain {gains[name]:8.2f}x")
-    assert gains["geometric k=1e4"] < 1.5
-    assert gains["wilkinson"] > gains["geometric k=1e4"]
+        med[name] = np.median(g)
+        print(f"{name:16s} profile spread {np.max(h)/np.min(h):9.2e}"
+              f"  fold gain median {med[name]:5.2f}x"
+              f"  range [{min(g):.2f}, {max(g):.2f}]")
+    assert 0.95 < med["geometric k=1e4"] < 1.2
+    assert 0.95 < med["nonneg random"] < 1.35
+    assert 1.5 < med["wilkinson"] < 3.5
+    assert med["wilkinson"] > med["geometric k=1e4"]
 
 
 if __name__ == "__main__":
     import sys, pytest
     sys.exit(pytest.main([__file__, "-v", "-s"]))
-    

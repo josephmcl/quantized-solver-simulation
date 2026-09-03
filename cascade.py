@@ -5,7 +5,6 @@ plus the panel extraction and matrix families the structured tests need.
 import numpy as np
 from solver import slice_rows, slice_cols, sliced_gemm
 
-_rng = np.random.default_rng(1)
 ALL = lambda i, j: True
 
 
@@ -19,11 +18,14 @@ def cascade_field_cols(B, depth):
     t_last = slice_cols(B, depth)[-1][1]
     return np.broadcast_to((t_last ** 2 / 12)[None, :], B.shape).copy()
 
-def measured_sq_error(A, B, depth, draws=20, keep=ALL):
+def measured_sq_error(A, B, depth, draws=20, keep=ALL, seed=0):
+    # hermetic on purpose; a shared module stream made results depend on
+    # call order, which is how the 1.72x drift happened
+    g = np.random.default_rng(seed)
     out = []
     for _ in range(draws):
-        Aj = A * (1 + 1e-7 * _rng.standard_normal(A.shape))
-        Bj = B * (1 + 1e-7 * _rng.standard_normal(B.shape))
+        Aj = A * (1 + 1e-7 * g.standard_normal(A.shape))
+        Bj = B * (1 + 1e-7 * g.standard_normal(B.shape))
         C = sliced_gemm(slice_rows(Aj, depth), slice_cols(Bj, depth), keep)
         out.append(np.linalg.norm(C - Aj @ Bj) ** 2)
     return np.mean(out)

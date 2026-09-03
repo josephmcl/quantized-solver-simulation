@@ -93,8 +93,8 @@ def variance(A, b):
 def predicted_error(A, B, v_A, v_B):
     """ total squared error can be predicted using thm 3.3
 
-    the column energies of B are the sums of the squares of the entries in the rows of B. the A_term
-    is the sum over i,k of (v_A)_(ik) ||B_(k,:)|| 
+    the row energies of B are the sums of the squares of the entries in the rows of B. the A_term
+    is the sum over i,k of (v_A)_(ik) ||B_(k,:)||^2
      """
     row_energies_B = np.sum((B**2), axis=1)
     weighted_A = v_A * row_energies_B
@@ -102,7 +102,7 @@ def predicted_error(A, B, v_A, v_B):
 
     """ the column energies of A are the sums of the squares of the entries in the /columns/ of A
     and therefore use axis=0. the result also needs to be converted to a column vector to match
-    the dimension of the variance matrix. the B_term is the sum over k,j of (v_B)_(kj) ||A_(:,k)|| 
+    the dimension of the variance matrix. the B_term is the sum over k,j of (v_B)_(kj) ||A_(:,k)||^2 
     """
     col_energies_A = (np.sum((A**2), axis=0)).reshape(-1,1)
     weighted_B = v_B * col_energies_A
