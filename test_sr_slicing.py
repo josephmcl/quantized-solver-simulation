@@ -70,3 +70,35 @@ def test_composite_slope_same_under_both_roundings():
           "  (worst case 1.0, independence alone 0.5)")
     assert abs(s_rtn - s_sr) < 0.1
     assert 0.5 < s_rtn < 1.0
+
+
+def test_sr_end_to_end_depth_cost():
+    # registered prediction (written before running): the minimal depth at
+    # which refine reaches bwd 1e-13 within 40 sweeps under SR equals the
+    # RTN minimal depth or is one more, never two. consistent with the
+    # per-slice base 139: deficit ~0.12 slice per slice, about half a
+    # slice at these dials.
+    from solver import refine
+
+    def min_depth(A, b, slicer=None):
+        saved = solver.slice_rows
+        if slicer is not None:
+            solver.slice_rows = slicer
+        try:
+            for s in range(1, 8):
+                L, U, piv, _ = lu_int8(A, s, panel=32)
+                _, _, bwd = refine(A, b, L, U, piv, tol=1e-13, maxit=40)
+                if bwd <= 1e-13:
+                    return s
+        finally:
+            solver.slice_rows = saved
+        return None
+
+    g = np.random.default_rng(11)
+    for kap in (1e4, 1e6):
+        A = gen_geometric(192, kap, seed=int(np.log10(kap)))
+        b = g.standard_normal(192)
+        d_rtn = min_depth(A, b)
+        d_sr = min_depth(A, b, sr_slice_rows)
+        print(f"kappa={kap:.0e}: minimal converging depth RTN {d_rtn}, SR {d_sr}")
+        assert d_sr - d_rtn in (0, 1)
