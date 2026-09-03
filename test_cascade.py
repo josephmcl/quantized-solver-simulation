@@ -3,10 +3,10 @@ fold-gain prediction lives here too. Helpers are in cascade.py."""
 
 import numpy as np
 from quantize import predicted_error, range_rule, apply_contraction
-from solver import BETA, gen_geometric
+from solver import BETA, gen_geometric, lu_int8
 from cascade import (cascade_field_rows, cascade_field_cols,
                      measured_sq_error, omitted_pairs_error, panel_step,
-                     wilkinson, nonneg)
+                     predict_gate, minij, wilkinson, nonneg)
 
 rng = np.random.default_rng(1)
 
@@ -127,3 +127,40 @@ def test_truncation_share_completes_per_update_accounting():
     # not 10:5; same regime the T4 diagnostic flags. guarded as measured:
     for dep in (3, 4):
         assert ratios["wilkinson", dep] == 0.0
+
+
+def test_pure_minij_is_exactly_representable():
+    # finding, registered before running: pure minij's panel operands are
+    # lattice-exact (L21 all ones, U12 zero/one, one slice each), so the
+    # sliced factorization should be exact at any depth and the gate pure
+    # float64 noise. rounding mode RTN.
+    gate = lu_int8(minij(256), 2, panel=64)[3]
+    print(f"pure minij n=256 depth 2: gate {gate:.2e}  (exact representation)")
+    assert gate < 1e-14
+
+
+def test_no_fit_gate_prediction():
+    # registered prediction (written before running, RTN): on perturbed
+    # minij (growth ~1, generic scales, no fitted constant anywhere in the
+    # chain) predict_gate agrees with the measured lu_int8 gate within a
+    # factor of 2 at depths 2 and 3, n in (256, 512). geometric may drift
+    # further as the scale-profile composite enters; gated only at a
+    # factor of 5, reported honestly either way.
+    g = np.random.default_rng(9)
+    ratios = {}
+    for n in (256, 512):
+        fams = {
+            "minij~": minij(n) * (1 + 1e-6 * g.standard_normal((n, n))),
+            "geometric": gen_geometric(n, 1e4, seed=7),
+        }
+        for name, A in fams.items():
+            for dep in (2, 3):
+                pred = predict_gate(A, dep, panel=64)
+                meas = lu_int8(A, dep, panel=64)[3]
+                ratios[name, n, dep] = meas / pred
+                print(f"{name:10s} n={n} depth {dep}: predicted {pred:.2e}"
+                      f"  measured {meas:.2e}  ratio {meas/pred:.2f}")
+    for n in (256, 512):
+        for dep in (2, 3):
+            assert 0.5 < ratios["minij~", n, dep] < 2.0
+            assert 0.2 < ratios["geometric", n, dep] < 5.0

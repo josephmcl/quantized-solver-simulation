@@ -54,6 +54,44 @@ def panel_step(A, kb):
     return W[kb:, :kb], np.linalg.solve(L11, W[:kb, kb:])
 
 
+def predict_gate(A, depth, panel=64):
+    # no-fit first-order gate prediction: per panel of an exact float64
+    # elimination replica (mirrors lu_int8's loop; solver.py stays frozen),
+    # identity-predicted representation energy plus exact truncation energy
+    # of the trailing update, panels combined in quadrature
+    n = A.shape[0]
+    W = A.astype(np.float64).copy()
+    tot = 0.0
+    for k in range(0, n, panel):
+        kb = min(panel, n - k)
+        for c in range(k, k + kb):
+            p = c + np.argmax(np.abs(W[c:, c]))
+            if p != c:
+                W[[c, p], :] = W[[p, c], :]
+            W[c+1:, c] /= W[c, c]
+            W[c+1:, c+1:k+kb] -= np.outer(W[c+1:, c], W[c, c+1:k+kb])
+        if k + kb < n:
+            L11 = np.tril(W[k:k+kb, k:k+kb], -1) + np.eye(kb)
+            W[k:k+kb, k+kb:] = np.linalg.solve(L11, W[k:k+kb, k+kb:])
+            L21 = W[k+kb:, k:k+kb]
+            U12 = W[k:k+kb, k+kb:]
+            rep2 = predicted_error(L21, U12,
+                                   cascade_field_rows(L21, depth),
+                                   cascade_field_cols(U12, depth))
+            tr = omitted_pairs_error(L21, U12, depth)
+            tot += rep2 + tr ** 2
+            W[k+kb:, k+kb:] -= L21 @ U12   # exact update, prediction only
+    return np.sqrt(tot) / np.linalg.norm(A)
+
+
+def minij(n):
+    # A_ij = min(i, j); growth 1 under partial pivoting. NOTE: lattice-
+    # degenerate for the quantizer (L21 all ones, U12 zero/one, exactly
+    # representable in one slice); perturb for identity experiments
+    i = np.arange(1, n + 1, dtype=np.float64)
+    return np.minimum.outer(i, i)
+
+
 def wilkinson(n):
     # the classical growth-2^(n-1) matrix under partial pivoting
     W = -np.tril(np.ones((n, n)), -1) + np.eye(n)
