@@ -5,7 +5,8 @@ import numpy as np
 from quantize import predicted_error, range_rule, apply_contraction
 from solver import BETA, gen_geometric
 from cascade import (cascade_field_rows, cascade_field_cols,
-                     measured_sq_error, panel_step, wilkinson, nonneg)
+                     measured_sq_error, omitted_pairs_error, panel_step,
+                     wilkinson, nonneg)
 
 rng = np.random.default_rng(1)
 
@@ -89,3 +90,40 @@ def test_registered_prediction_fold_gain_tracks_growth():
     assert med["wilkinson"] > med["nonneg random"] > med["geometric k=1e4"] - 0.05
     assert 1.3 < med["wilkinson"] < 3.0
     assert spr["wilkinson"] > 100 * spr["geometric k=1e4"]
+
+
+def test_truncation_share_completes_per_update_accounting():
+    # registered prediction (written before running, RTN): the dropped-pair
+    # term over the representation error, as a RATIO OF FROBENIUS NORMS, is
+    # about 2, matching the record's 10:5 additive split of the per-panel
+    # constant 15. band: 2 within a factor 1.5 ([1.33, 3.0]) for geometric
+    # and nonneg at depths 3 and 4; wilkinson gets only a wide gate
+    # ([0.5, 8]) per its documented volatility.
+    fams = {
+        "geometric k=1e4": gen_geometric(256, 1e4, seed=5),
+        "nonneg random": nonneg(256, seed=1),
+        "wilkinson": wilkinson(256),
+    }
+    seeds = (0, 1, 2)
+    ratios = {}
+    for name, A in fams.items():
+        L21, U12 = panel_step(A, 32)
+        for dep in (3, 4):
+            reps = [np.sqrt(measured_sq_error(L21, U12, dep, draws=8, seed=sd))
+                    for sd in seeds]
+            tr = omitted_pairs_error(L21, U12, dep)
+            r = tr / np.median(reps)
+            ratios[name, dep] = r
+            print(f"{name:16s} depth {dep}: rep {np.median(reps):.3e}"
+                  f" [{min(reps):.3e}, {max(reps):.3e}] seeds {seeds}"
+                  f"  trunc {tr:.3e}  ratio {r:.2f}  (record 10:5 ~ 2)")
+    for name in ("geometric k=1e4", "nonneg random"):
+        for dep in (3, 4):
+            assert 1.33 < ratios[name, dep] < 3.0
+    # DOCUMENTED DISAGREEMENT (first run, 2026-09-03): wilkinson's ratio is
+    # exactly 0, not in the predicted wide band. its L21 is all +-1, captured
+    # entirely by slice 0, so every dropped pair is identically zero and the
+    # truncation term vanishes. on lattice-exact panels the split is 0:15,
+    # not 10:5; same regime the T4 diagnostic flags. guarded as measured:
+    for dep in (3, 4):
+        assert ratios["wilkinson", dep] == 0.0

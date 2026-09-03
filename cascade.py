@@ -3,7 +3,8 @@ plus the panel extraction and matrix families the structured tests need.
 """
 
 import numpy as np
-from solver import slice_rows, slice_cols, sliced_gemm
+from solver import slice_rows, slice_cols, sliced_gemm, truncation_rule
+from quantize import predicted_error
 
 ALL = lambda i, j: True
 
@@ -29,6 +30,16 @@ def measured_sq_error(A, B, depth, draws=20, keep=ALL, seed=0):
         C = sliced_gemm(slice_rows(Aj, depth), slice_cols(Bj, depth), keep)
         out.append(np.linalg.norm(C - Aj @ Bj) ** 2)
     return np.mean(out)
+
+
+def omitted_pairs_error(A, B, depth):
+    # exact Frobenius norm of the slice pairs the shipped rule drops;
+    # deterministic under RTN, no draws involved
+    Asl = slice_rows(A, depth)
+    Bsl = slice_cols(B, depth)
+    full = sliced_gemm(Asl, Bsl, ALL)
+    kept = sliced_gemm(Asl, Bsl, truncation_rule(depth))
+    return np.linalg.norm(full - kept)
 
 
 def panel_step(A, kb):
