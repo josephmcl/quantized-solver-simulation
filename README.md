@@ -8,6 +8,7 @@ the answer down to the floor (FP64).
 Run with
 
 ```
+pip install -r requirements.txt
 python -m pytest -s
 ```
 
