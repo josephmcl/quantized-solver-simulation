@@ -84,6 +84,20 @@ def predict_gate(A, depth, panel=64):
     return np.sqrt(tot) / np.linalg.norm(A)
 
 
+def weighted_predicted_error(A, B, vA, vB, w):
+    # left-weighted Thm 3.3: E ||diag(w) (Chat - C)||_F^2 for elementwise
+    # independent zero-mean quantization errors with variance fields vA, vB.
+    # left weight only, sufficient for the graded-projection instrument.
+    # built FOR the student's question; not applied to it here
+    w2 = np.asarray(w, dtype=np.float64) ** 2
+    rowB = np.sum(B ** 2, axis=1)
+    A_term = np.sum((w2[:, None] * vA) * rowB[None, :])
+    colWA = np.sum(w2[:, None] * A ** 2, axis=0)
+    B_term = np.sum(vB * colWA[:, None])
+    C_term = np.sum(np.sum(w2[:, None] * vA, axis=0) * np.sum(vB, axis=1))
+    return A_term + B_term + C_term
+
+
 def minij(n):
     # A_ij = min(i, j); growth 1 under partial pivoting. NOTE: lattice-
     # degenerate for the quantizer (L21 all ones, U12 zero/one, exactly
