@@ -24,13 +24,18 @@ def test_scale_controlled_accumulation_slope():
           "  (composite was 0.74; independence says 0.5)")
     assert 0.4 < np.median(s_rtn) < 0.6
 
-    # SR with the spec's fixed dither key: first run (2026-09-03) measured
+    # SR with the step field frozen (schedule S3 of keyed_sr): first run
+    # (2026-09-03) measured
     # slope 0.932 [0.932, 0.933] -- a DOCUMENTED DISAGREEMENT with the
     # prediction above. cause: the counter-based dither keyed only on
     # (i, j, level) reuses the identical field every step, and for fixed
     # dither u the conditional error mean is (0.5 - u) quanta, a per-entry
     # bias that accumulates coherently. M1 mean-independence holds within
-    # a step, not across steps, under a fixed key. guarded as measured:
+    # a step, not across steps, under a fixed key. guarded as measured.
+    # (R1 made `step` a required field of the one dither spec; the frozen
+    # field is now reachable only by holding step fixed on purpose, which
+    # is what this does. keyed_sr.py calls the same thing S3, and E2
+    # identifies which channel carries the drift.)
     fixed = lambda t: (sr_slice_rows, sr_slice_cols)
     s_fix = slopes_for(fixed)
     print(f"SR fixed key: slope median {np.median(s_fix):.3f}"
@@ -46,8 +51,8 @@ def test_sr_per_step_key_restores_sqrt_growth():
     # fixed key as the cause of the linear growth above and is the spec fix:
     # the kernel key must include the update/panel index.
     keyed = lambda t: (
-        lambda A, d: sr_slice_rows(A, d, key=0x9E3779B9 + 1000003 * (t + 1)),
-        lambda B, d: sr_slice_cols(B, d, key=0x51ED2701 + 999983 * (t + 1)),
+        lambda A, d: sr_slice_rows(A, d, step=t),
+        lambda B, d: sr_slice_cols(B, d, step=t),
     )
     s = slopes_for(keyed)
     print(f"SR per-step key: slope median {np.median(s):.3f}"

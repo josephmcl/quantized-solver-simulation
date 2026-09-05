@@ -5,7 +5,7 @@ import numpy as np
 import solver
 from solver import gen_geometric, lu_int8
 from quantize import predicted_error
-from sr_slicing import sr_slice_rows, dither, QMAX
+from sr_slicing import sr_slice_rows, dither, QMAX, SALT_ROWS, SALT_COLS
 
 rng = np.random.default_rng(3)
 
@@ -43,8 +43,8 @@ def test_identity_exact_under_sr():
     pred = predicted_error(A, B, vA, vB)
     meas = []
     for t in range(200):
-        dA = np.floor(qA) + (dither(A.shape, 0, key=t) < fA)
-        dB = np.floor(qB.T) + (dither(B.T.shape, 1, key=t) < fB.T)
+        dA = np.floor(qA) + (dither(A.shape, 0, step=t, salt=SALT_ROWS) < fA)
+        dB = np.floor(qB.T) + (dither(B.T.shape, 0, step=t, salt=SALT_COLS) < fB.T)
         meas.append(np.linalg.norm((dA * sA[:, None]) @ (dB.T * sB[None, :]) - A @ B) ** 2)
     r = np.mean(meas) / pred
     print(f"SR identity exactness: measured/predicted = {r:.3f}")

@@ -173,7 +173,7 @@ def test_weighted_identity_instrument():
     # squared error within [0.95, 1.05] on random operands with a
     # log-spread left weight. instrument build only; the singular-direction
     # application is the student's question and is deliberately not run.
-    from sr_slicing import dither
+    from sr_slicing import dither, SALT_ROWS, SALT_COLS
     g = np.random.default_rng(6)
     A = g.standard_normal((80, 80))
     B = g.standard_normal((80, 80))
@@ -187,8 +187,8 @@ def test_weighted_identity_instrument():
     pred = weighted_predicted_error(A, B, vA, vB, w)
     meas = []
     for t in range(200):
-        dA = np.floor(qA) + (dither(A.shape, 0, key=t) < fA)
-        dB = np.floor(qB.T) + (dither(B.T.shape, 1, key=t) < fB.T)
+        dA = np.floor(qA) + (dither(A.shape, 0, step=t, salt=SALT_ROWS) < fA)
+        dB = np.floor(qB.T) + (dither(B.T.shape, 0, step=t, salt=SALT_COLS) < fB.T)
         E = (dA * sA[:, None]) @ (dB.T * sB[None, :]) - A @ B
         meas.append(np.linalg.norm(w[:, None] * E) ** 2)
     r = np.mean(meas) / pred
