@@ -90,6 +90,20 @@ def variance(A, b):
         var_A[index, :] = var_predicted
     return var_A
 
+def variance_block(A, b, s):
+    """ variance by block where s is the size of the block
+    """
+    var_A = np.empty_like(A, dtype=float)
+    m = A.shape[0] # num rows
+    for i in range(0, m, s):
+        # compute r, delta, and variance for the entire block of rows i though i+s:
+        r = np.max(np.abs(A[i:i+s]))
+        delta = r / (2**(b - 1) - 1)
+        var_predicted = (delta ** 2) / 12
+        for j in range(i, min((i + s), m)):
+            var_A[j, :] = var_predicted
+    return var_A
+
 def predicted_error(A, B, v_A, v_B):
     """ total squared error can be predicted using thm 3.3
 
