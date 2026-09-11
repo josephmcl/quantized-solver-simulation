@@ -9,25 +9,29 @@ from solver import slice_rows, slice_cols, sliced_gemm, truncation_rule
 
 
 def error_growth(m=192, b=32, depth=3, k=128, seed=0, slicers=None,
-                 keep=None, detail=False):
+                 keep=None, gen=None, detail=False):
     # k successive trailing updates, fresh L (m x b) and U (b x m) each
     # step; the sliced update's error accumulates into E. returns
     # ||E||_F after each step. slicers(step) -> (row_slicer, col_slicer)
     # so SR callers can vary the dither key per step; default is RTN.
     # keep overrides the shipped truncation rule (E2 uses ALL to isolate
-    # the truncation channel). detail additionally returns the per-step
-    # error norms and the final accumulated error field.
+    # the truncation channel); gen(rng, shape) overrides the operand
+    # family (E2 uses a coherent one to expose the parallel channel).
+    # detail additionally returns the per-step error norms and the final
+    # accumulated error field.
     if slicers is None:
         slicers = lambda t: (slice_rows, slice_cols)
     if keep is None:
         keep = truncation_rule(depth)
+    if gen is None:
+        gen = lambda rng, shape: rng.standard_normal(shape)
     g = np.random.default_rng(seed)
     E = np.zeros((m, m))
     cum, per = [], []
     for t in range(k):
         rows, cols = slicers(t)
-        L = g.standard_normal((m, b))
-        U = g.standard_normal((b, m))
+        L = gen(g, (m, b))
+        U = gen(g, (b, m))
         X = sliced_gemm(rows(L, depth), cols(U, depth), keep) - L @ U
         E += X
         cum.append(np.linalg.norm(E))

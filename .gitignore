@@ -2,3 +2,5 @@ __pycache__/
 .pytest_cache/
 venv/
 .claude/
+fig*.pdf
+table1.md

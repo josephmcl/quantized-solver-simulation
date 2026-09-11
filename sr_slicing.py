@@ -65,15 +65,21 @@ def _mix_arr(h):
 def base_key(level, step=0, salt=SALT_ROWS):
     """The non-positional half of the key. Separated so keyed_sr can name
     a schedule by what it does to (level, step, salt)."""
-    return _mix64(salt + _mix64(step * 0x27D4EB2F165667C5
-                                + _mix64(level * 0x165667B19E3779F9
-                                         + 0x94D049BB133111EB)))
+    # int() so a numpy integer index cannot overflow into C-long territory
+    return _mix64(int(salt) + _mix64(int(step) * 0x27D4EB2F165667C5
+                                     + _mix64(int(level) * 0x165667B19E3779F9
+                                              + 0x94D049BB133111EB)))
 
 
-def dither(shape, level, step=0, salt=SALT_ROWS, share_j=False):
+def dither(shape, level, step=0, salt=SALT_ROWS, share_j=False,
+           i0=0, j0=0):
     """u in [0, 1) for every position of `shape`, keyed on
     (i, j, level, step, salt). Counter-based: a pure function of the key,
     so the field is order-free, backend-free and scale-free.
+
+    i0, j0 offset the POSITION fields, so a block of a larger operand
+    gets the keys its global position would give it: blocking and block
+    visit order cannot move a rounding decision (E3, Theorem 4).
 
     share_j drops the second index from the key, so one draw is shared
     across a whole row -- across the b contraction positions, when the
@@ -81,14 +87,15 @@ def dither(shape, level, step=0, salt=SALT_ROWS, share_j=False):
     channel violation (keyed_sr S3b); the canonical spec never sets it.
     """
     h = np.uint64(base_key(level, step, salt))
-    i = np.arange(shape[0], dtype=np.uint64)[:, None]
+    i = (np.uint64(i0) + np.arange(shape[0], dtype=np.uint64))[:, None]
     j = (np.zeros(shape[1], dtype=np.uint64) if share_j
-         else np.arange(shape[1], dtype=np.uint64))[None, :]
+         else np.uint64(j0) + np.arange(shape[1], dtype=np.uint64))[None, :]
     u = _mix_arr(h + i * _M_I + j * _M_J)
     return (u >> np.uint64(11)).astype(np.float64) / np.float64(1 << 53)
 
 
-def sr_slice_rows(A, depth, step=0, salt=SALT_ROWS, share_j=False):
+def sr_slice_rows(A, depth, step=0, salt=SALT_ROWS, share_j=False,
+                  i0=0, j0=0):
     # per-entry error is mean zero with variance frac(1-frac) quanta^2,
     # which makes the variance-field identity exact rather than approximate.
     # callers doing repeated updates MUST advance `step`; see the module
@@ -100,16 +107,19 @@ def sr_slice_rows(A, depth, step=0, salt=SALT_ROWS, share_j=False):
         s = np.where(m > 0, m / QMAX, 1.0)
         q = R / s[:, None]
         f = np.floor(q)
-        u = dither(A.shape, lvl, step, salt, share_j)
+        u = dither(A.shape, lvl, step, salt, share_j, i0, j0)
         d = (f + (u < (q - f))).astype(np.int8)
         out.append((d, s))
         R = R - d.astype(np.float64) * s[:, None]
     return out
 
 
-def sr_slice_cols(B, depth, step=0, salt=SALT_COLS, share_j=False):
+def sr_slice_cols(B, depth, step=0, salt=SALT_COLS, share_j=False,
+                  i0=0, j0=0):
     # B is sliced along its columns, i.e. rows of B.T; the contraction
     # index of B is then the *second* index of B.T, so share_j means the
-    # same thing on both operands of a product
+    # same thing on both operands of a product. i0, j0 are offsets in the
+    # slicer's own (B.T) coordinates, i.e. i0 offsets B's columns.
     return [(d.T, s) for d, s in
-            sr_slice_rows(np.ascontiguousarray(B.T), depth, step, salt, share_j)]
+            sr_slice_rows(np.ascontiguousarray(B.T), depth, step, salt,
+                          share_j, i0, j0)]
