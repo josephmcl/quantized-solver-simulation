@@ -7,7 +7,7 @@ does something on an operand pair built to need it.
 
 import numpy as np
 from quantize import (quantize_by_row, variance, predicted_error,
-                      range_rule, apply_contraction)
+                      range_rule, apply_contraction, quantize_by_block, variance_block)
 
 rng = np.random.default_rng(0)
 b = 8
@@ -24,6 +24,14 @@ def measured_sq_error(A, B, draws=30):
         out.append(np.linalg.norm(Ah @ Bh - Aj @ Bj) ** 2)
     return np.mean(out)
 
+def measured_err_block_size(A,B, s=1, draws=30):
+    out = []
+    for _ in range(draws):
+        Aj = A * (1 + 1e-6 * rng.standard_normal(A.shape))
+        Bj = B * (1 + 1e-6 * rng.standard_normal(B.shape))
+        Ah, Bh = quantize_by_block(Aj, b, s), quantize_by_block(Bj, b, s)
+        out.append(np.linalg.norm(Ah @ Bh - Aj @ Bj) ** 2)
+    return np.mean(out)
 
 def test_identity_matches_measurement():
     # Thm 3.3 against real round-to-nearest, benign operands
@@ -32,6 +40,10 @@ def test_identity_matches_measurement():
     pred = predicted_error(A, B, variance(A, b), variance(B, b))
     meas = measured_sq_error(A, B)
     print(f"predicted {pred:.3e}  measured {meas:.3e}  ratio {meas / pred:.2f}")
+    for s in [2,4,8,16,32]:
+        pred_block = predicted_error(A, B, variance_block(A, b, s), variance_block(A, b,s))
+        meas_block = measured_err_block_size(A,B,s)
+        print(f"block size = {s} predicted {pred_block:.3e}  measured {meas_block:.3e}  ratio {meas_block / pred_block:.2f}")
     assert 0.85 < meas / pred < 1.15
 
 
